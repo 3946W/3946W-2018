@@ -21,11 +21,13 @@
 #include "Vex_Competition_Includes.c"
 #define fourBarUp 1300;
 #define fourBarDown 2200;
-#define liftUp 1700;
-#define liftDown 3000;
+#define liftUp 800;
+#define liftDown 2700;
 int secondStageTarget = 2200;
-int liftTarget = 2000;
+int liftTarget = 3000;
 int taskWait = 25;
+bool liftPidEnabled = true;
+
 void pre_auton()
 {
 	bStopTasksBetweenModes = true;
@@ -38,12 +40,19 @@ task autonomous()
 	AutonomousCodePlaceholderForTesting();
 }
 task secondLiftPID(){
-	float kp = 0.13;
+	float kp = 0.1;
+	float sum = 0;
 	float error;
 	while(true){
 		error = secondStageTarget - SensorValue[secondLift];
-		motor[rightFourBar] = error * kp;
-		motor[leftFourBar] = error * kp;
+		if(sum > 127){
+			sum = 127;
+		}
+		else if(sum < -127){
+			sum = -127
+		}
+		motor[rightFourBar] = ((error * kp) * -1;
+		motor[leftFourBar] = ((error * kp) * -1;
 	}
 	wait1Msec(taskWait);
 }
@@ -51,7 +60,7 @@ task secondLiftPID(){
 task liftPID(){
 	float kp = 0.13;
 	float error;
-	while(true){
+	while(liftPidEnabled){
 		error = liftTarget - SensorValue[liftPot];
 		motor[topLeftLift] = error * kp * -1;
 		motor[topRightLift] = error * kp * -1;
@@ -60,12 +69,38 @@ task liftPID(){
 	}
 	wait1Msec(taskWait);
 }
+task liftDriverControl(){
+	while(true){
+		if(vexRT[Btn5U]){
+			liftPidEnabled = false;
+			motor[topLeftLift] = 60;
+			motor[topRightLift] = 60;
+			motor[bottomLeftLift] = 60;
+			motor[bottomRightLift] = 60;
+		}else if(vexRT[Btn5D]){
+			liftPidEnabled = false;
+			motor[topLeftLift] = -127;
+			motor[topRightLift] = -127;
+			motor[bottomLeftLift] = -127;
+			motor[bottomRightLift] = -127;
+		}
+		else{
+			liftPidEnabled = true;
+			motor[topLeftLift] = 0;
+			motor[topRightLift] = 0;
+			motor[bottomLeftLift] = 0;
+			motor[bottomRightLift] = 0;
 
+		}
+		wait1Msec(taskWait);
+	}
+
+}
 void fwdTicks(int target){
 	int makeNeg = 1;
 	if(target < 0){
 		makeNeg = -1;
-}
+	}
 	SensorValue[lDrive] = 0;
 	SensorValue[rDrive] = 0;
 	while((((SensorValue[lDrive] + SensorValue[rDrive]) / 2)*makeNeg) < (target*makeNeg)){
@@ -104,35 +139,45 @@ void gyroTurn(float target){
 	target = target * 10;
 	SensorValue[Gyro] = 0;
 	int error = target - SensorValue[Gyro];
- 	float kp = 1.0;
- 	clearTimer(T1);
- 	clearTimer(T2);
- 	while((time1[T1] <= 1000) && (time1[T2] <= 5000)){
- 			error = target - SensorValue[Gyro];
- 			if(abs(error) >= 5){
- 				clearTimer(T1);
- 			}
- 			motor[leftDrive] = error * kp * -1;
- 			motor[rightDrive] = error * kp;
+	float kp = 1.0;
+	clearTimer(T1);
+	clearTimer(T2);
+	while((time1[T1] <= 1000) && (time1[T2] <= 5000)){
+		error = target - SensorValue[Gyro];
+		if(abs(error) >= 5){
+			clearTimer(T1);
+		}
+		motor[leftDrive] = error * kp * -1;
+		motor[rightDrive] = error * kp;
 	}
 	motor[leftDrive] = 0;
 	motor[rightDrive] = 0;
 	playTone(2048, 10);
 }
 void mobileGoalDown(){
-		motor[rightMobileIntake]=127;
-		motor[leftMobileIntake]=127;
+	motor[rightMobileIntake]=127;
+	motor[leftMobileIntake]=127;
 }
 void mobileGoalUp(){
-		motor[rightMobileIntake]=-127;
-		motor[leftMobileIntake]=-127;
-		wait1Msec(1000);
-		motor[rightMobileIntake]=0;
-		motor[leftMobileIntake]=0;
+	motor[rightMobileIntake]=-127;
+	motor[leftMobileIntake]=-127;
+	wait1Msec(1000);
+	motor[rightMobileIntake]=0;
+	motor[leftMobileIntake]=0;
 
 }
+int lastGoodValue;
+int cleanUltrasonic(int input){
+	if(input <= 0){
+		return lastGoodValue;
+	}
+	else{
+		lastGoodValue = input;
+		return input;
+	}
+}
 void programmingSkills(){
-	liftTarget = liftDown;
+	liftTarget = 2000;
 	fwdTicks(800);
 	mobileGoalDown();
 	fwdTicks(550);
@@ -144,20 +189,30 @@ void programmingSkills(){
 	fwdTicks(350);
 	wait1Msec(250);
 	gyroTurn(90.0);
-	fwdTicks(900);
+	fwdTicks(950);
 	mobileGoalDown();
-	fwdTicks(-900);
+	wait1Msec(250);
 	mobileGoalUp();
-
-
-
+	fwdTicks(-900);
+	gyroTurn(-90.0);
+	wait1Msec(250);
+	fwdTicks(400);
+	gyroTurn(-90.0);
+	wait1Msec(250);
+	fwdTicks(-400);
+	fwdTicks(800);
+	mobileGoalDown();
+	fwdTicks(550);.
+	mobileGoalUp();
+	fwdTicks(-1100);
 
 }
 task usercontrol()
 {
-	startTask(secondLiftPID);
-	startTask(liftPID);
-	secondStageTarget = fourBarUp;
+	//startTask(secondLiftPID);
+	//startTask(liftPID);
+	//startTask(liftDriverControl);
+	//secondStageTarget = fourBarUp;
 
 	programmingSkills();
 
@@ -166,10 +221,10 @@ task usercontrol()
 		if(vexRT[Btn6D]){
 			motor[rightMobileIntake]=127;
 			motor[leftMobileIntake]=127;
-		}else if(vexRT[Btn6U]){
+			}else if(vexRT[Btn6U]){
 			motor[rightMobileIntake]=-127;
 			motor[leftMobileIntake]=-127;
-		}else{
+			}else{
 			motor[rightMobileIntake]=0;
 			motor[leftMobileIntake]=0;
 		}
