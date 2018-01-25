@@ -1,10 +1,11 @@
 #pragma config(Sensor, in1,    secondLift,     sensorPotentiometer)
 #pragma config(Sensor, in2,    liftPot,        sensorPotentiometer)
 #pragma config(Sensor, in4,    Gyro,           sensorGyro)
+#pragma config(Sensor, in5,    mobileGoalDetector, sensorReflection)
 #pragma config(Sensor, dgtl1,  lDrive,         sensorQuadEncoder)
 #pragma config(Sensor, dgtl3,  rDrive,         sensorQuadEncoder)
 #pragma config(Sensor, dgtl7,  coneDetector,   sensorSONAR_cm)
-#pragma config(Motor,  port1,           leftMobileIntake, tmotorVex393_HBridge, openLoop)
+#pragma config(Motor,  port1,           leftMobileIntake, tmotorVex393_HBridge, openLoop, reversed)
 #pragma config(Motor,  port2,           rightFourBar,  tmotorVex393_MC29, openLoop)
 #pragma config(Motor,  port3,           rightDrive,    tmotorVex393_MC29, openLoop, reversed)
 #pragma config(Motor,  port4,           topLeftLift,   tmotorVex393_MC29, openLoop)
@@ -24,96 +25,130 @@
 #define liftUp 800;
 #define liftDown 2700;
 int secondStageTarget = 2200;
-int liftTarget = 3000;
-int taskWait = 25;
+int liftTarget = 2700;
+int taskWait = 10;
 bool liftPidEnabled = true;
-
+bool mobileGoalToggleUp = false;
+void liftMotors(int power){
+	motor[topRightLift] = power;
+	motor[bottomRightLift] = power;
+	motor[topLeftLift] = power;
+	motor[bottomLeftLift] = power;
+}
 void pre_auton()
 {
 	bStopTasksBetweenModes = true;
 }
-
-
-task autonomous()
-{
-
-	AutonomousCodePlaceholderForTesting();
-}
 task secondLiftPID(){
 	float kp = 0.1;
-	float sum = 0;
 	float error;
 	while(true){
 		error = secondStageTarget - SensorValue[secondLift];
-		if(sum > 127){
-			sum = 127;
-		}
-		else if(sum < -127){
-			sum = -127
-		}
-		motor[rightFourBar] = ((error * kp) * -1;
-		motor[leftFourBar] = ((error * kp) * -1;
+		motor[rightFourBar] = ((error * kp) * -1);
+		motor[leftFourBar] = ((error * kp) * -1);
 	}
 	wait1Msec(taskWait);
 }
-
-task liftPID(){
-	float kp = 0.13;
-	float error;
-	while(liftPidEnabled){
-		error = liftTarget - SensorValue[liftPot];
-		motor[topLeftLift] = error * kp * -1;
-		motor[topRightLift] = error * kp * -1;
-		motor[bottomLeftLift] = error * kp * -1;
-		motor[bottomRightLift] = error * kp * -1;
-	}
-	wait1Msec(taskWait);
-}
-task liftDriverControl(){
+task peakDetect(){
 	while(true){
 		if(vexRT[Btn5U]){
-			liftPidEnabled = false;
-			motor[topLeftLift] = 60;
-			motor[topRightLift] = 60;
-			motor[bottomLeftLift] = 60;
-			motor[bottomRightLift] = 60;
-		}else if(vexRT[Btn5D]){
-			liftPidEnabled = false;
-			motor[topLeftLift] = -127;
-			motor[topRightLift] = -127;
-			motor[bottomLeftLift] = -127;
-			motor[bottomRightLift] = -127;
+			clearTimer(T3);
+			int min = SensorValue[liftPot];
+			while(time1(T3) < 2000){
+				if(SensorValue[liftPot] < min){
+					min = SensorValue[liftPot];
+					liftTarget = min;
+				}
+			}
 		}
-		else{
-			liftPidEnabled = true;
-			motor[topLeftLift] = 0;
-			motor[topRightLift] = 0;
-			motor[bottomLeftLift] = 0;
-			motor[bottomRightLift] = 0;
-
-		}
-		wait1Msec(taskWait);
 	}
-
 }
-void fwdTicks(int target){
-	int makeNeg = 1;
-	if(target < 0){
-		makeNeg = -1;
+task liftPID(){
+	float kp = 0.05;
+	float error;
+	while(true){
+		if(vexRT[Btn5U]){
+			while(vexRT[Btn5U]){
+				liftMotors(127);
+			}
+		} else if(vexRT[Btn5D]) {
+				while(vexRT[Btn5D]){
+					liftMotors(-60);
+				}
+				liftTarget = SensorValue[liftPot];
+			} else {
+			error = liftTarget - SensorValue[liftPot];
+			liftMotors(error * kp * -1);
+			wait1Msec(taskWait);
+		}
 	}
+}
+task autonomousMultitask(){
+	while(true){
+		if(mobileGoalToggleUp){
+			motor[rightMobileIntake]=-127;
+			motor[leftMobileIntake]=-127;
+			wait1Msec(1000);
+			motor[rightMobileIntake]=0;
+			motor[leftMobileIntake]=0;
+			mobileGoalToggleUp = false;
+		}
+	}
+}
+void fwdTicks(int target, int mgTarget){
+	float kp = 0.8;
+	float error = 6;
+	int motorPower;
+	int MaxMotorValue = 80;
 	SensorValue[lDrive] = 0;
 	SensorValue[rDrive] = 0;
-	while((((SensorValue[lDrive] + SensorValue[rDrive]) / 2)*makeNeg) < (target*makeNeg)){
-		motor[leftDrive] = 100 * makeNeg;
-		motor[rightDrive] = 100 * makeNeg;
+	clearTimer(T1);
+	clearTimer(T2);
+	while(time1[T2] < 500 && time1[T1] < 3000){
+		error = target - ((SensorValue[lDrive] + SensorValue[rDrive]) / 2);
+		motorPower = error * kp;
+		if(error < mgTarget){
+			mobileGoalToggleUp = true;
+		}
+		if(abs(error) > 5){
+			clearTimer(T2);
+		}
+		if(motorPower > MaxMotorValue){
+			motorPower = MaxMotorValue;
+		}
+		else if(motorPower < (MaxMotorValue * -1)){
+			motorPower = MaxMotorValue * -1;
+		}
+		motor[leftDrive] = motorPower;
+		motor[rightDrive] = motorPower;
 	}
-	motor[leftDrive] = -60 * makeNeg;
-	motor[rightDrive] = -60 * makeNeg;
-	wait1Msec(50);
-	motor[leftDrive] = 0;
-	motor[rightDrive] = 0;
 	playTone(2048, 10);
-
+}
+void fwdTicks(int target){
+	float kp = 0.8;
+	float error = 6;
+	int motorPower;
+	int MaxMotorValue = 80;
+	SensorValue[lDrive] = 0;
+	SensorValue[rDrive] = 0;
+	clearTimer(T1);
+	clearTimer(T2);
+	while(time1[T2] < 500 && time1[T1] < 3000){
+		error = target - ((SensorValue[lDrive] + SensorValue[rDrive]) / 2);
+		motorPower = error * kp;
+		if(abs(error) > 5){
+			clearTimer(T2);
+		}
+		if(motorPower > MaxMotorValue){
+			motorPower = MaxMotorValue;
+		}
+		else if(motorPower < (MaxMotorValue * -1)){
+			motorPower = MaxMotorValue * -1;
+		}
+		motor[leftDrive] = motorPower;
+		motor[rightDrive] = motorPower;
+	}
+	playTone(2048, 10);
 }
 void swingRight(int target){
 	SensorValue[rDrive] = 0;
@@ -139,7 +174,7 @@ void gyroTurn(float target){
 	target = target * 10;
 	SensorValue[Gyro] = 0;
 	int error = target - SensorValue[Gyro];
-	float kp = 1.0;
+	float kp = 0.8;
 	clearTimer(T1);
 	clearTimer(T2);
 	while((time1[T1] <= 1000) && (time1[T2] <= 5000)){
@@ -154,17 +189,19 @@ void gyroTurn(float target){
 	motor[rightDrive] = 0;
 	playTone(2048, 10);
 }
-void mobileGoalDown(){
-	motor[rightMobileIntake]=127;
-	motor[leftMobileIntake]=127;
-}
 void mobileGoalUp(){
 	motor[rightMobileIntake]=-127;
 	motor[leftMobileIntake]=-127;
 	wait1Msec(1000);
 	motor[rightMobileIntake]=0;
 	motor[leftMobileIntake]=0;
-
+}
+void mobileGoalDown(){
+	motor[rightMobileIntake]=127;
+	motor[leftMobileIntake]=127;
+	wait1Msec(1000);
+	motor[rightMobileIntake]=20;
+	motor[leftMobileIntake]=20;
 }
 int lastGoodValue;
 int cleanUltrasonic(int input){
@@ -177,50 +214,68 @@ int cleanUltrasonic(int input){
 	}
 }
 void programmingSkills(){
-	liftTarget = 2000;
-	fwdTicks(800);
+	startTask(autonomousMultitask);
+	startTask(liftPID);
+	liftTarget = 2700;
+	fwdTicks(800);//first forward
 	mobileGoalDown();
-	fwdTicks(550);
-	mobileGoalUp();
-	fwdTicks(-1100);
-	wait1Msec(500);
+	fwdTicks(700,100);//mobile goal picked up
+	fwdTicks(-1200);
 	gyroTurn(100.0);
-	wait1Msec(250);
-	fwdTicks(350);
-	wait1Msec(250);
+	fwdTicks(500);
 	gyroTurn(90.0);
-	fwdTicks(950);
-	mobileGoalDown();
-	wait1Msec(250);
-	mobileGoalUp();
-	fwdTicks(-900);
-	gyroTurn(-90.0);
-	wait1Msec(250);
-	fwdTicks(400);
-	gyroTurn(-90.0);
-	wait1Msec(250);
-	fwdTicks(-400);
-	fwdTicks(800);
-	mobileGoalDown();
-	fwdTicks(550);.
-	mobileGoalUp();
-	fwdTicks(-1100);
+	fwdTicks(1150);//goes into mobile goal zone
+	//mobileGoalDown();
+	fwdTicks(-1150, -200);
+
+
+
+
+	//old code
+	//fwdTicks(700);
+	//mobileGoalDown();
+	//fwdTicks(650);
+	//mobileGoalUp();
+	//fwdTicks(-1100);
+	//wait1Msec(500);
+	//gyroTurn(100.0);
+	//wait1Msec(250);
+	//fwdTicks(350);
+	//wait1Msec(250);
+	//gyroTurn(90.0);
+	//fwdTicks(1050);//move into 20 point zone
+	//mobileGoalDown();
+	//wait1Msec(700);
+	//mobileGoalUp();
+	//fwdTicks(-800);
+	//gyroTurn(-90.0);
+	//wait1Msec(250);
+	//fwdTicks(400);
+	//gyroTurn(-90.0);
+	//wait1Msec(250);
+	//fwdTicks(-350);
+	//wait1Msec(250);
+	//fwdTicks(700);
+	//mobileGoalDown();
+	//fwdTicks(650);
+	//mobileGoalUp();
+	//fwdTicks(-1100);
 
 }
-task usercontrol()
-{
-	//startTask(secondLiftPID);
-	//startTask(liftPID);
-	//startTask(liftDriverControl);
-	//secondStageTarget = fourBarUp;
-
-	programmingSkills();
-
-	while (true)
-	{
+task mobileGoalDriver(){
+	while(true){
 		if(vexRT[Btn6D]){
-			motor[rightMobileIntake]=127;
-			motor[leftMobileIntake]=127;
+			clearTimer(T4);
+			while(vexRT[Btn6D]){
+				if(time1[T4] < 1000){
+					motor[rightMobileIntake]=127;
+					motor[leftMobileIntake]=127;
+				}
+				else{
+					motor[rightMobileIntake]=5;
+					motor[leftMobileIntake]=5;
+				}
+			}
 			}else if(vexRT[Btn6U]){
 			motor[rightMobileIntake]=-127;
 			motor[leftMobileIntake]=-127;
@@ -228,6 +283,22 @@ task usercontrol()
 			motor[rightMobileIntake]=0;
 			motor[leftMobileIntake]=0;
 		}
+	}
+}
+task autonomous()
+{
+	programmingSkills();
+}
+task usercontrol()
+{
+	//startTask(secondLiftPID);
+	startTask(liftPID);
+	startTask(peakDetect);
+	startTask(mobileGoalDriver);
+	secondStageTarget = fourBarUp;
+
+	while (true)
+	{
 		motor[leftDrive]=vexRT[Ch1] + vexRT[Ch3];//drive control
 		motor[rightDrive]=vexRT[Ch3] - vexRT[Ch1];
 	}
