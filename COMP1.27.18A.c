@@ -78,20 +78,20 @@ task secondLiftPID(){
 	}
 	wait1Msec(taskWait);
 }
-task peakDetect(){
-	while(true){
-		if(vexRT[Btn5UXmtr2]){
-			int min = SensorValue[liftPot];
-			clearTimer(T3);
-			while(time1(T3) < 250){
-				if(SensorValue[liftPot] < min){//min is actually increasing height since lift values are reversed
-					min = SensorValue[liftPot];
-					liftTarget = min;
-				}
-			}
-		}
-	}
-}
+//task peakDetect(){
+//	while(true){
+//		if(vexRT[Btn5UXmtr2]){
+//			int min = SensorValue[liftPot];
+//			clearTimer(T3);
+//			while(time1(T3) < 250){
+//				if(SensorValue[liftPot] < min){//min is actually increasing height since lift values are reversed
+//					min = SensorValue[liftPot];
+//					liftTarget = min;
+//				}
+//			}
+//		}
+//	}
+//}
 task liftPID(){
 	float kp = 0.05;
 	float error;
@@ -100,7 +100,6 @@ task liftPID(){
 			while(vexRT[Btn5UXmtr2]){
 				liftMotors(127);
 			}
-			liftTarget = Sensorvalue[liftPot];
 			} else if(vexRT[Btn5DXmtr2]){
 			while(vexRT[Btn5DXmtr2]){
 				liftMotors(-50);
